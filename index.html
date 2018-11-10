@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Game client</title>
+</head>
+<body>
+
+<script>
+    function httpGet(url) {
+        return new Promise((resolve, reject) => {
+            let xhr = new XMLHttpRequest()
+            xhr.open('GET', url)
+            xhr.onload = ()=>resolve(xhr.responseText)
+            xhr.onerror = () => reject(xhr.statusText)
+            xhr.send()
+        })
+    }
+
+    function testGame() {
+        httpGet('http://127.0.0.1:8888/game').then(
+                (response_txt)=> console.log(JSON.parse(response_txt))
+        )
+    }
+
+</script>
+
+</body>
+
+<button onclick="testGame()">test</button>
+</html>
