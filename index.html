@@ -66,11 +66,25 @@
         my_cell.removeClass()
         my_cell.addClass(class_name)
 
-        console.log(position, class_name)
     }
 
     function updateMap(data) {
+        // generate empty html table
+        let table = $('#game')
+        $('#game tr').remove()
         let start = data['map_position']
+
+        console.log(start)
+        // don`t read it please
+        for (let y = start[1]; y < start[1] + data.view_height; y++) {
+            let line = '<tr>'
+            for (let x = start[0]; x < start[0] + data.view_width; x++) {
+                let position = x + '-' + y
+                line += '<td><div id="cell' + position + '" onclick="cellClick(\'' + position + '\')"></div></td>'
+            }
+            line += '</tr>'
+            table.append(line)
+        }
 
         for (let x = start[0]; x < start[0] + data.view_width; x++) {
             for (let y = start[1]; y < start[1] + data.view_height; y++) {
@@ -101,7 +115,20 @@
     function cellClick(uid) {
         var info = global_info.map[uid];
         if (info) {
-            log('I`m ' + info['name'] + ', my uid=' + info['uid'])
+            httpGet('http://127.0.0.1:8888/info?x=' + info['coord'][0] + '&y=' + info['coord'][1])
+                    .then(
+                            function (txt) {
+                                let server_info = JSON.parse(txt)
+                                log('I`m ' + server_info['name'] + ', my position=' + info['coord'][0] + ',' + info['coord'][1])
+                                if (!server_info['tasks'].length) {
+                                    log('and i have no tasks')
+                                } else {
+                                    server_info['tasks'].forEach(
+                                            (task)=>log(' ' + task[0] + ' created ' + task[1])
+                                    )
+                                }
+                            }
+                    )
         }
     }
 
@@ -115,29 +142,7 @@
         let direction = keys[event.keyCode]
         if (!direction) return
         httpGet('http://127.0.0.1:8888/move?direction=' + direction)
-//                .then((txt)=>updateMap(prepareData(txt)))
-                .then((txt)=>initMap(prepareData(txt)))
-    }
-
-    function initMap(data) {
-        // generate empty html table
-        let table = $('#game')
-        $('#game tr').remove()
-        let start = data['map_position']
-        // don`t read it please
-        for (let y = start[1]; y < start[1] + data.view_height; y++) {
-            let line = '<tr>'
-            for (let x = start[0]; x < start[0] + data.view_width; x++) {
-                let position = x + '-' + y
-                line += '<td><div id="cell' + position + '" onclick="cellClick(\'' + position + '\')"></div></td>'
-            }
-            line += '</tr>'
-            table.append(line)
-        }
-        log('Use arrow to scroll map')
-        log('Init map')
-        updateMap(data)
-        document.onkeypress = onkeypress
+                .then((txt)=>updateMap(prepareData(txt)))
     }
 
     function prepareData(txt) {
@@ -154,10 +159,25 @@
     }
 
     $(document).ready(function () {
+        document.onkeypress = onkeypress
         httpGet('http://127.0.0.1:8888/game')
-                .then((txt)=>initMap(prepareData(txt)))
+                .then((txt)=>updateMap(prepareData(txt)))
     })
 
+    function goSelf() {
+        httpGet('http://127.0.0.1:8888/move?direction=self')
+                .then((txt)=>updateMap(prepareData(txt)))
+    }
+
+    function goToCell() {
+        let input = $('#navigate').val()
+        httpGet('http://127.0.0.1:8888/move?direction=cell&x=' + input.split(',')[0] + '&y=' + input.split(',')[1])
+                .then((txt)=>updateMap(prepareData(txt)))
+    }
+
+    function spawnTasks() {
+        httpGet('http://127.0.0.1:8888/spawn_tasks')
+    }
 
 </script>
 
@@ -165,7 +185,12 @@
 </table>
 
 <div id="log">
-
+    <button onclick="goSelf()">Go to start</button>
+    <br/>
+    <input type="text" id="navigate">
+    <button onclick="goToCell()">Go to position</button>
+    <button onclick="spawnTasks()">Spawn tasks</button>
+    <br/>
 </div>
 
 </body>

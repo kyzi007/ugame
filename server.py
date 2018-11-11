@@ -1,8 +1,10 @@
 # -*- coding:utf-8 -*-
 import json
 import random
+import datetime
 
 import redis
+import asyncio_redis
 
 from aiohttp import web
 from aiohttp_session import get_session, setup
@@ -17,10 +19,18 @@ def get_redis_from_pool():
     return redis.Redis(connection_pool=pool)
 
 
-def to_xy(cell: int, map_size: int):
+async def get_async_redis():
+    return await asyncio_redis.Connection.create(host='127.0.0.1', port=6379)
+
+
+def to_xy(cell, map_size):
     y = int(cell / map_size)
     x = cell - map_size * y
     return [x, y]
+
+
+def from_xy(x, y, map_size):
+    return y * map_size + x
 
 
 def generate_bot_info(uid):
@@ -73,7 +83,6 @@ def cut_map_area(start, all_cells, area_map_size, map_size):
     all_cells = map(lambda x: int(x), all_cells)
 
     # area left top cell
-
     all_cells = list(all_cells)
     for i in range(0, area_map_size):
         start_ = start + map_size * i
@@ -81,6 +90,43 @@ def cut_map_area(start, all_cells, area_map_size, map_size):
 
     return view_cells
 
+
+@routes.get('/spawn_tasks')
+async def spawn_tasks(request):
+    db = await get_async_redis()
+    i = config.BOTS_COUNT * 4
+    while i > 0:
+        i -= 1
+
+        random_key = await db.randomkey()
+        if 'player' in random_key:
+            uid = random_key.split(':')[1]
+            tasks = await db.keys('task:%s:*' % uid)
+            tasks = list(tasks)
+            if len(tasks) < 4:
+                task_id = random.choice(list(set(range(0, 4)) - set(map(lambda x: x.result().split(':')[2], tasks))))
+                expire = random.randint(10, 10 * 60)
+                now = datetime.datetime.now().strftime('%H:%M:%S')
+                await db.set('task:%s:%s' % (uid, task_id), now, expire=expire)
+
+
+@routes.get('/info')
+async def tasks(request):
+    db = get_redis_from_pool()
+
+    x = request.query['x']
+    y = request.query['y']
+    cell = from_xy(int(x), int(y), config.MAP_SIZE)
+
+    response_data = {
+        'name': db.get('player:%s:name' % cell).decode(),
+        'tasks': []
+    }
+    tasks_keys = db.keys('task:%s:*' % cell)
+    for key in tasks_keys:
+        response_data['tasks'].append(['Task %s' % key.decode().split(':')[2], db.get(key).decode()])
+
+    return web.Response(body=json.dumps(response_data))
 
 @routes.get('/move')
 async def move(request):
@@ -91,13 +137,35 @@ async def move(request):
     session = await get_session(request)
     direction = request.query['direction']
 
-    print(direction)
+    # todo validate
+    x, y = to_xy(session['map_position'], config.MAP_SIZE)
     if direction == 'top':
-        session['map_position'] -= config.MAP_SIZE * config.MOVE_SPEED
-        session['map_position'] = max(session['map_position'], 0)
-        response_data = await get_map(db, session)
+        y -= config.MOVE_SPEED
+        y = max(0, y)
+    elif direction == 'bottom':
+        y += config.MOVE_SPEED
+        y = min(y, config.MAP_SIZE - config.MOVE_SPEED)
+    elif direction == 'left':
+        x -= config.MOVE_SPEED
+        x = max(0, x)
+    elif direction == 'right':
+        x += config.MOVE_SPEED
+        x = min(x, config.MAP_SIZE - config.MOVE_SPEED)
+    elif direction == 'self':
+        x, y = to_xy(session['cell'], config.MAP_SIZE)
+        x -= int(config.VISIBLE_MAP_SIZE / 2)
+        x = min(x, config.MAP_SIZE - int(config.VISIBLE_MAP_SIZE / 2))
+        y -= int(config.VISIBLE_MAP_SIZE / 2)
+        y = min(y, config.MAP_SIZE - int(config.VISIBLE_MAP_SIZE / 2))
+    elif direction == 'cell':
+        x = int(request.query['x'])
+        y = int(request.query['y'])
+
+    session['map_position'] = from_xy(x, y, config.MAP_SIZE)
+    response_data = await get_map(db, session)
 
     return web.Response(body=json.dumps(response_data))
+
 
 @routes.get('/game')
 async def game(request):
@@ -145,8 +213,6 @@ async def get_map(db, session):
     # gets bots and other players info
     for uid in cells:
         map_info.append({
-            # todo tasks
-            'name': db.get('player:%s:name' % uid).decode(),
             'type': db.get('player:%s:type' % uid).decode(),
             'uid': uid,
             'coord': to_xy(uid, config.MAP_SIZE)
@@ -161,15 +227,15 @@ async def get_map(db, session):
         'map_width': config.MAP_SIZE,
         'map_height': config.MAP_SIZE
     }
-    print(response_data)
+
     return response_data
 
 
 class Game(web.Application):
     async def startup(self) -> None:
-        db = get_redis_from_pool()
-        db.flushdb()
-        generate_bots(db, config.BOTS_COUNT, config.MAP_SIZE)
+        # db = get_redis_from_pool()
+        # db.flushdb()
+        # generate_bots(db, config.BOTS_COUNT, config.MAP_SIZE)
         await self.on_startup.send(self)
 
 
