@@ -20,7 +20,7 @@ def get_redis_from_pool():
 def to_xy(cell: int, map_size: int):
     y = int(cell / map_size)
     x = cell - map_size * y
-    return x, y
+    return [x, y]
 
 
 def generate_bot_info(uid):
@@ -46,7 +46,7 @@ def generate_bots(db, total, map_size):
     for uid in bots:
         info = generate_bot_info(uid)
         for key, value in info.items():
-            db.append(key, value)
+            db.set(key, value)
 
 
 def search_free_cell(db, map_size):
@@ -68,22 +68,36 @@ def search_free_cell(db, map_size):
             return cell
 
 
-def cut_map_area(all_cells, center_point, area_map_size, map_size):
+def cut_map_area(start, all_cells, area_map_size, map_size):
     view_cells = []
     all_cells = map(lambda x: int(x), all_cells)
 
     # area left top cell
-    start = center_point - map_size * int(area_map_size / 2)
-    start -= int(area_map_size / 2)
-    start = max(0, start)
 
     all_cells = list(all_cells)
     for i in range(0, area_map_size):
         start_ = start + map_size * i
         view_cells += filter(lambda x: start_ <= x < start_ + area_map_size, all_cells)
 
-    return view_cells, start
+    return view_cells
 
+
+@routes.get('/move')
+async def move(request):
+    # not async redis a lot faster
+    # one point to db access
+    db = get_redis_from_pool()
+
+    session = await get_session(request)
+    direction = request.query['direction']
+
+    print(direction)
+    if direction == 'top':
+        session['map_position'] -= config.MAP_SIZE * config.MOVE_SPEED
+        session['map_position'] = max(session['map_position'], 0)
+        response_data = await get_map(db, session)
+
+    return web.Response(body=json.dumps(response_data))
 
 @routes.get('/game')
 async def game(request):
@@ -103,54 +117,59 @@ async def game(request):
 
         db.sadd('cells', cell)
 
+        # player to view zone center
+        map_position = cell - config.MAP_SIZE * int(config.VISIBLE_MAP_SIZE / 2)
+        map_position -= int(config.VISIBLE_MAP_SIZE / 2)
+        map_position = max(0, map_position)
+
+        session['map_position'] = map_position
+
         # generate random info
         player_info = generate_player_info(cell)
         for key, value in player_info.items():
-            db.append(key, value)
-    else:
-        cell = session['cell']
+            db.set(key, value)
 
+    response_data = await get_map(db, session)
+    return web.Response(body=json.dumps(response_data))
+
+
+async def get_map(db, session):
     all_cells = db.smembers('cells')
-
-    cells, start = cut_map_area(
+    cells = cut_map_area(
+        start=session['map_position'],
         all_cells=all_cells,
-        center_point=cell,
         area_map_size=config.VISIBLE_MAP_SIZE,
         map_size=config.MAP_SIZE)
     map_info = []
 
     # gets bots and other players info
     for uid in cells:
-        map_info.append(
-            {
-                # todo tasks
-                'name': db.get('player:%s:name' % uid),
-                'type': db.get('player:%s:type' % uid),
-                'uid': uid,
-                'coord': to_xy(uid)
-            }
-        )
-
+        map_info.append({
+            # todo tasks
+            'name': db.get('player:%s:name' % uid).decode(),
+            'type': db.get('player:%s:type' % uid).decode(),
+            'uid': uid,
+            'coord': to_xy(uid, config.MAP_SIZE)
+        })
     response_data = {
         # i don`t hate frontend developers
-        'player_uid': cells,
-        'player_coord': to_xy(cell, config.MAP_SIZE),
-        'map': list(map(lambda x: to_xy(x, config.MAP_SIZE), cells)),
-        'map_start': to_xy(start, config.MAP_SIZE),
+        'player_uid': session['cell'],
+        'map': map_info,
+        'map_position': to_xy(session['map_position'], config.MAP_SIZE),
         'view_width': config.VISIBLE_MAP_SIZE,
         'view_height': config.VISIBLE_MAP_SIZE,
         'map_width': config.MAP_SIZE,
         'map_height': config.MAP_SIZE
     }
-
-    return web.Response(body=json.dumps(response_data))
+    print(response_data)
+    return response_data
 
 
 class Game(web.Application):
     async def startup(self) -> None:
         db = get_redis_from_pool()
         db.flushdb()
-        generate_bots(config.BOTS_COUNT, config.MAP_SIZE)
+        generate_bots(db, config.BOTS_COUNT, config.MAP_SIZE)
         await self.on_startup.send(self)
 
 

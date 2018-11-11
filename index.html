@@ -33,6 +33,10 @@
             background: #0082b6;
         }
 
+        .player-cell {
+            background: #eb7904;
+        }
+
         .bot-cell {
             background: #77b400;
         }
@@ -45,6 +49,8 @@
 <body>
 
 <script>
+    let global_info = {}
+
     function httpGet(url) {
         return new Promise((resolve, reject) => {
             let xhr = new XMLHttpRequest()
@@ -59,45 +65,97 @@
         let my_cell = $('#cell' + position[0] + '-' + position[1])
         my_cell.removeClass()
         my_cell.addClass(class_name)
+
+        console.log(position, class_name)
     }
 
     function updateMap(data) {
-        let start = data['map_start']
+        let start = data['map_position']
 
         for (let x = start[0]; x < start[0] + data.view_width; x++) {
             for (let y = start[1]; y < start[1] + data.view_height; y++) {
-                $('#cell' + x + '-' + y).addClass('empty-cell')
+                let position = x + '-' + y
+                $('#cell' + position).addClass('empty-cell')
             }
         }
-        data.map.forEach((bot)=>updateCell(bot, 'bot-cell'))
-        updateCell(data['cell'], 'my-cell')
+
+        Object.values(data.map).forEach(
+                function (info) {
+                    if (info.type == 'bot') {
+                        updateCell(info.coord, 'bot-cell')
+                    } else {
+                        if (info.uid == data.player_uid) {
+                            updateCell(info.coord, 'my-cell')
+                        } else {
+                            updateCell(info.coord, 'player-cell')
+                        }
+                    }
+                }
+        )
     }
 
     function log(txt) {
         $('#log').append(txt + '</br>')
     }
 
-    function initMap(data) {
-        let table = $('#game')
-        let start = data['map_start']
+    function cellClick(uid) {
+        var info = global_info.map[uid];
+        if (info) {
+            log('I`m ' + info['name'] + ', my uid=' + info['uid'])
+        }
+    }
 
+    function onkeypress(event) {
+        let keys = {
+            119: 'top',
+            100: 'right',
+            97: 'left',
+            115: 'bottom'
+        }
+        let direction = keys[event.keyCode]
+        if (!direction) return
+        httpGet('http://127.0.0.1:8888/move?direction=' + direction)
+//                .then((txt)=>updateMap(prepareData(txt)))
+                .then((txt)=>initMap(prepareData(txt)))
+    }
+
+    function initMap(data) {
+        // generate empty html table
+        let table = $('#game')
+        $('#game tr').remove()
+        let start = data['map_position']
+        // don`t read it please
         for (let y = start[1]; y < start[1] + data.view_height; y++) {
             let line = '<tr>'
             for (let x = start[0]; x < start[0] + data.view_width; x++) {
-                line += '<td><div id="cell' + x + '-' + y + '"></div></td>'
-//                line += '<td><div id="cell' + x + '-' + y + '">' + x + '-' + y +'</div></td>'
+                let position = x + '-' + y
+                line += '<td><div id="cell' + position + '" onclick="cellClick(\'' + position + '\')"></div></td>'
             }
             line += '</tr>'
             table.append(line)
         }
-        log('Init map, my position ' + data['cell'][0] + ',' + data['cell'][1])
+        log('Use arrow to scroll map')
+        log('Init map')
         updateMap(data)
+        document.onkeypress = onkeypress
     }
 
+    function prepareData(txt) {
+        let data = JSON.parse(txt)
+        // map => dict from fast read
+        let new_map = {}
+        data.map.forEach(
+                (el)=> new_map[el['coord'][0] + '-' + el['coord'][1]] = el
+        )
+        global_info['map'] = new_map
+        data.map = new_map
+        global_info['player_uid'] = data.player_uid
+        return data
+    }
 
     $(document).ready(function () {
         httpGet('http://127.0.0.1:8888/game')
-                .then((txt)=>initMap(JSON.parse(txt)))
+                .then((txt)=>initMap(prepareData(txt)))
     })
 
 
