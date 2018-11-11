@@ -5,12 +5,40 @@
     <title>Game client</title>
     <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
     <style>
-        table {
-            margin: 100px;
+        body {
+            width: 1200px;
         }
+
+        #game {
+            float: left;
+        }
+
+        #log {
+            margin-top: 20px;
+            float: right;
+            border: 1px solid #e3e3e3;
+            width: 300px;
+        }
+
+        table {
+            margin: 20px;
+        }
+
         table div {
-            padding: 20px;
+            padding: 8px;
             border: 1px solid #0096d2;
+        }
+
+        .my-cell {
+            background: #0082b6;
+        }
+
+        .bot-cell {
+            background: #77b400;
+        }
+
+        .empty-cell {
+            background: #ffffff;
         }
     </style>
 </head>
@@ -27,35 +55,60 @@
         })
     }
 
-    function draw_map(data) {
+    function updateCell(position, class_name) {
+        let my_cell = $('#cell' + position[0] + '-' + position[1])
+        my_cell.removeClass()
+        my_cell.addClass(class_name)
+    }
+
+    function updateMap(data) {
+        let start = data['map_start']
+
+        for (let x = start[0]; x < start[0] + data.view_width; x++) {
+            for (let y = start[1]; y < start[1] + data.view_height; y++) {
+                $('#cell' + x + '-' + y).addClass('empty-cell')
+            }
+        }
+        data.map.forEach((bot)=>updateCell(bot, 'bot-cell'))
+        updateCell(data['cell'], 'my-cell')
+    }
+
+    function log(txt) {
+        $('#log').append(txt + '</br>')
+    }
+
+    function initMap(data) {
         let table = $('#game')
-        console.log(data.view_width)
+        let start = data['map_start']
 
-        for (let x = 0; x < data.view_width; x++) {
-
+        for (let y = start[1]; y < start[1] + data.view_height; y++) {
             let line = '<tr>'
-            for (let y = 0; y < data.view_height; y++) {
-                line += '<td><div id="' + x + '-' + y + '"></div></td>'
+            for (let x = start[0]; x < start[0] + data.view_width; x++) {
+                line += '<td><div id="cell' + x + '-' + y + '"></div></td>'
+//                line += '<td><div id="cell' + x + '-' + y + '">' + x + '-' + y +'</div></td>'
             }
             line += '</tr>'
             table.append(line)
         }
-
-
+        log('Init map, my position ' + data['cell'][0] + ',' + data['cell'][1])
+        updateMap(data)
     }
 
 
     $(document).ready(function () {
         httpGet('http://127.0.0.1:8888/game')
-                .then((txt)=>draw_map(JSON.parse(txt)))
+                .then((txt)=>initMap(JSON.parse(txt)))
     })
 
 
 </script>
 
 <table id="game">
-
 </table>
+
+<div id="log">
+
+</div>
 
 </body>
 </html>
