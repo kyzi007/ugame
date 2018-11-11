@@ -1,5 +1,5 @@
 asyncio
-asyncio_redis
+redis
 
 aiohttp
 aiohttp_session

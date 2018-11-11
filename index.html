@@ -3,6 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <title>Game client</title>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <style>
+        table {
+            margin: 100px;
+        }
+        table div {
+            padding: 20px;
+            border: 1px solid #0096d2;
+        }
+    </style>
 </head>
 <body>
 
@@ -17,15 +27,35 @@
         })
     }
 
-    function testGame() {
-        httpGet('http://127.0.0.1:8888/game').then(
-                (response_txt)=> console.log(JSON.parse(response_txt))
-        )
+    function draw_map(data) {
+        let table = $('#game')
+        console.log(data.view_width)
+
+        for (let x = 0; x < data.view_width; x++) {
+
+            let line = '<tr>'
+            for (let y = 0; y < data.view_height; y++) {
+                line += '<td><div id="' + x + '-' + y + '"></div></td>'
+            }
+            line += '</tr>'
+            table.append(line)
+        }
+
+
     }
+
+
+    $(document).ready(function () {
+        httpGet('http://127.0.0.1:8888/game')
+                .then((txt)=>draw_map(JSON.parse(txt)))
+    })
+
 
 </script>
 
-</body>
+<table id="game">
 
-<button onclick="testGame()">test</button>
+</table>
+
+</body>
 </html>

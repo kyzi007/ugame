@@ -1,13 +1,12 @@
 # -*- coding:utf-8 -*-
 
-MIN_X = 0
-MAX_X = 512
-MIN_Y = 0
-MAX_Y = 512
-
-FAKE_USERS_COUNT = 20000
+MAP_SIZE = 10
+VISIBLE_MAP_SIZE = 3
+BOTS_COUNT = 10
+# MAP_SIZE = 512
+# VISIBLE_MAP_SIZE = 32
+# BOTS_COUNT = 20000
 
 MOVE_SPEED = 5
 
 SECRET = b'CRYEIwWU+seFwNtEaMa4qWx8VCJbRUVv'
-         # b'Thirty  two  length  bytes  key.'
