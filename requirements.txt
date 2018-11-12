@@ -1,6 +1,6 @@
 asyncio
 redis
-
+asyncio_redis
 aiohttp
 aiohttp_session
 cryptography

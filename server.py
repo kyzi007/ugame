@@ -3,6 +3,7 @@ import json
 import random
 import datetime
 
+import re
 import redis
 import asyncio_redis
 
@@ -107,7 +108,7 @@ async def spawn_tasks(request):
                 task_id = random.choice(list(set(range(0, 4)) - set(map(lambda x: x.result().split(':')[2], tasks))))
                 expire = random.randint(10, 10 * 60)
                 now = datetime.datetime.now().strftime('%H:%M:%S')
-                await db.set('task:%s:%s' % (uid, task_id), now, expire=expire)
+                await db.set('task:%s:%s' % (uid, task_id), '%s-%s' % (now, expire), expire=expire)
 
 
 @routes.get('/info')
@@ -124,9 +125,18 @@ async def tasks(request):
     }
     tasks_keys = db.keys('task:%s:*' % cell)
     for key in tasks_keys:
-        response_data['tasks'].append(['Task %s' % key.decode().split(':')[2], db.get(key).decode()])
+        task_name = 'Task %s' % key.decode().split(':')[2]
+        time_data = db.get(key).decode()
+        now = datetime.datetime.now()
+        h, m, s, expire = re.findall('(\d+):(\d+):(\d+)-(\d+)', time_data)[0]
+        created = now.replace(hour=int(h), minute=int(m), second=int(s))
+        time_to_end = int(expire) - (now - created).seconds
+        m = int(time_to_end / 60)
+        s = time_to_end - m * 60
+        response_data['tasks'].append([task_name, created.strftime('%H:%M:%S'), '%smin %ss' % (m, s)])
 
     return web.Response(body=json.dumps(response_data))
+
 
 @routes.get('/move')
 async def move(request):
